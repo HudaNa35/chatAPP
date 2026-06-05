@@ -11,6 +11,8 @@ const usersList = document.getElementById('users-list');
 const messagesDisplay = document.getElementById('messages-display');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
+const attachBtn = document.getElementById('attach-btn');
+const fileInput = document.getElementById('file-input');
 const currentRoomName = document.getElementById('current-room-name');
 const privateModeIndicator = document.getElementById('private-mode-indicator');
 const privateTargetUser = document.getElementById('private-target-user');
@@ -90,7 +92,7 @@ socket.on('room-switched', (data) => {
 });
 
 socket.on('receive-message', (msg) => {
-    if (msg.type === 'private') {
+    if (msg.type === 'private' || msg.type === 'private-file') {
         // --- Private Message Handling ---
         if ((privateMessageTarget === msg.from && privateMessageTargetSessionId === msg.sessionId) || 
             (msg.from === myUsername && msg.sessionId === mySessionId)) {
@@ -295,23 +297,91 @@ backToRoomBtn.addEventListener('click', () => {
     exitPrivateMode();
 });
 
+// --- Language Detection Function ---
+function detectLanguage(text) {
+    const arabicRegex = /[\u0600-\u06FF]/g;
+    const arabicChars = (text.match(arabicRegex) || []).length;
+    const totalChars = text.length;
+    return arabicChars > totalChars / 2 ? 'rtl' : 'ltr';
+}
+
 function appendMessage(msg) {
     const div = document.createElement('div');
-    div.classList.add('message');
+    
     const isSentByMe = msg.from === myUsername && msg.sessionId === mySessionId;
     
-    if (msg.type === 'private') {
-        div.classList.add(isSentByMe ? 'private-sent' : 'private-received');
-    } else {
+    // Handle file attachments
+    if (msg.type === 'public-file' || msg.type === 'private-file') {
+        div.classList.add('file-attachment');
         div.classList.add(isSentByMe ? 'sent' : 'received');
+        
+        const senderDisplay = isSentByMe ? 'You' : `${msg.from} (${msg.sessionId.substring(0, 8)}...)`;
+        const fileIcon = getFileIcon(msg.fileType);
+        const fileSizeKB = (msg.fileContent.length / 1024).toFixed(2);
+        
+        div.innerHTML = `<div class="msg-meta">${senderDisplay} • ${msg.time}</div>
+                         <div class="file-info">
+                             <div class="file-icon">${fileIcon}</div>
+                             <div class="file-details">
+                                 <div class="file-name">${msg.fileName}</div>
+                                 <div class="file-size">${fileSizeKB} KB</div>
+                             </div>
+                         </div>`;
+        
+        // Add download button for received files
+        if (!isSentByMe) {
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = 'Download';
+            downloadBtn.style.marginTop = '8px';
+            downloadBtn.style.padding = '6px 12px';
+            downloadBtn.style.background = '#3498db';
+            downloadBtn.style.color = 'white';
+            downloadBtn.style.border = 'none';
+            downloadBtn.style.borderRadius = '4px';
+            downloadBtn.style.cursor = 'pointer';
+            downloadBtn.addEventListener('click', () => {
+                downloadFile(msg.fileContent, msg.fileName);
+            });
+            div.appendChild(downloadBtn);
+        }
+    } else {
+        // Handle text messages
+        div.classList.add('message');
+        
+        if (msg.type === 'private') {
+            div.classList.add(isSentByMe ? 'private-sent' : 'private-received');
+        } else {
+            div.classList.add(isSentByMe ? 'sent' : 'received');
+        }
+        
+        // Detect language and add RTL/LTR class
+        const lang = detectLanguage(msg.text);
+        div.classList.add(lang);
+        
+        const senderDisplay = isSentByMe ? 'You' : `${msg.from} (${msg.sessionId.substring(0, 8)}...)`;
+        div.innerHTML = `<div class="msg-meta">${senderDisplay} • ${msg.time}</div>
+                         <div class="msg-text">${msg.text}</div>`;
     }
-    
-    const senderDisplay = isSentByMe ? 'You' : `${msg.from} (${msg.sessionId.substring(0, 8)}...)`;
-    div.innerHTML = `<div class="msg-meta">${senderDisplay} • ${msg.time}</div>
-                     <div class="msg-text">${msg.text}</div>`;
     
     messagesDisplay.appendChild(div);
     messagesDisplay.scrollTop = messagesDisplay.scrollHeight;
+}
+
+function getFileIcon(fileType) {
+    if (fileType.startsWith('image/')) return '🖼️';
+    if (fileType.startsWith('video/')) return '🎥';
+    if (fileType.startsWith('audio/')) return '🎵';
+    if (fileType.includes('pdf')) return '📄';
+    if (fileType.includes('word') || fileType.includes('document')) return '📝';
+    if (fileType.includes('sheet') || fileType.includes('excel')) return '📊';
+    return '📎';
+}
+
+function downloadFile(base64Content, fileName) {
+    const link = document.createElement('a');
+    link.href = 'data:application/octet-stream;base64,' + base64Content;
+    link.download = fileName;
+    link.click();
 }
 
 function addSystemMessage(text) {
@@ -337,6 +407,46 @@ function playNotificationSound() {
         oscillator.stop(audioContext.currentTime + 0.1);
     } catch(e) { console.log('Audio error:', e); }
 }
+
+// --- File Attachment Handling ---
+attachBtn.addEventListener('click', () => {
+    fileInput.click();
+});
+
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        // Limit file size to 5MB
+        if (file.size > 5 * 1024 * 1024) {
+            alert('File size must be less than 5MB');
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64Content = event.target.result.split(',')[1]; // Remove data:... prefix
+            
+            if (privateMessageTarget) {
+                socket.emit('send-file', {
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileContent: base64Content,
+                    to: privateMessageTarget,
+                    isPrivate: true
+                });
+            } else {
+                socket.emit('send-file', {
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileContent: base64Content,
+                    isPrivate: false
+                });
+            }
+        };
+        reader.readAsDataURL(file);
+        fileInput.value = ''; // Reset file input
+    }
+});
 
 sendBtn.addEventListener('click', () => {
     const text = messageInput.value.trim();
