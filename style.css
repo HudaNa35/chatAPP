@@ -279,10 +279,76 @@ main {
     cursor: pointer;
 }
 
+#attach-btn {
+    padding: 0 15px;
+    font-size: 1.2rem;
+    background: #95a5a6;
+}
+
+#attach-btn:hover {
+    background: #7f8c8d;
+}
+
+.file-attachment {
+    max-width: 70%;
+    padding: 10px 15px;
+    border-radius: 18px;
+    position: relative;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+}
+
+.file-attachment.sent {
+    align-self: flex-end;
+    background: var(--secondary-color);
+    color: white;
+}
+
+.file-attachment.received {
+    align-self: flex-start;
+    background: #e9e9eb;
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.file-icon {
+    font-size: 1.5rem;
+}
+
+.file-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.file-name {
+    font-weight: bold;
+    word-break: break-all;
+}
+
+.file-size {
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
 .system-msg {
     text-align: center;
     font-size: 0.8rem;
     color: #95a5a6;
     margin: 5px 0;
     font-style: italic;
+}
+
+/* RTL/LTR Support */
+.message.rtl, .file-attachment.rtl {
+    direction: rtl;
+    text-align: right;
+}
+
+.message.ltr, .file-attachment.ltr {
+    direction: ltr;
+    text-align: left;
 }
